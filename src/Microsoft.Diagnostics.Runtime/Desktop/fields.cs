@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Reflection;
 using Microsoft.Diagnostics.Runtime.Utilities;
 using System.Collections.Generic;
+using Microsoft.Diagnostics.Runtime.Private;
 
 namespace Microsoft.Diagnostics.Runtime.Desktop
 {

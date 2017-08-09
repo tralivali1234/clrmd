@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using Microsoft.Diagnostics.Runtime.Private;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -603,7 +604,7 @@ namespace Microsoft.Diagnostics.Runtime
             return (int)threadType;
         }
 
-        internal ThreadBase(Desktop.IThreadData thread, ulong address, bool finalizer)
+        internal ThreadBase(IThreadData thread, ulong address, bool finalizer)
         {
             _address = address;
             _finalizer = finalizer;

@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using Microsoft.Diagnostics.Runtime.Private;
 using System;
 using System.Collections.Generic;
 
@@ -20,7 +21,7 @@ namespace Microsoft.Diagnostics.Runtime.Native
 
         internal override GCDesc GCDesc => _gcDesc.Value;
 
-        public NativeType(NativeHeap heap, int index, NativeModule module, string name, ulong eeType, Desktop.IMethodTableData mtData)
+        public NativeType(NativeHeap heap, int index, NativeModule module, string name, ulong eeType, IMethodTableData mtData)
         {
             _heap = heap;
             _module = module;

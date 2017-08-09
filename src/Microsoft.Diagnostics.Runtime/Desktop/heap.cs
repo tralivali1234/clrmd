@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using Microsoft.Diagnostics.Runtime.Private;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -165,8 +166,9 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
                 if (data.ElementTypeHandle != 0)
                     result = GetTypeByMethodTable(data.ElementTypeHandle, 0, 0);
 
-                if (result == null && data.ElementType != ClrElementType.Unknown)
-                    result = GetBasicType(data.ElementType);
+                ClrElementType elementType = (ClrElementType)data.ElementType;
+                if (result == null && elementType != ClrElementType.Unknown)
+                    result = GetBasicType(elementType);
             }
             else if (cmt != 0)
             {

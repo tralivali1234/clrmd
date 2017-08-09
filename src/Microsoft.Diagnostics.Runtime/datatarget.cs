@@ -14,6 +14,7 @@ using System.Text;
 using System.Threading;
 using Microsoft.Diagnostics.Runtime.ICorDebug;
 using System.Text.RegularExpressions;
+using Microsoft.Diagnostics.Runtime.Private;
 
 namespace Microsoft.Diagnostics.Runtime
 {
@@ -148,18 +149,18 @@ namespace Microsoft.Diagnostics.Runtime
         /// </summary>
         public ClrRuntime CreateRuntime(object clrDataProcess)
         {
-            DacLibrary lib = new DacLibrary(_dataTarget, (IXCLRDataProcess)clrDataProcess);
+            DacLibrary lib = new DacLibrary((IXCLRDataProcess)clrDataProcess);
 
             // Figure out what version we are on.
-            if (clrDataProcess is Desktop.ISOSDac)
+            if (clrDataProcess is ISOSDac)
             {
                 return new Desktop.V45Runtime(this, _dataTarget, lib);
             }
             else
             {
-                byte[] buffer = new byte[System.Runtime.InteropServices.Marshal.SizeOf(typeof(Desktop.V2HeapDetails))];
+                byte[] buffer = new byte[System.Runtime.InteropServices.Marshal.SizeOf(typeof(V2HeapDetails))];
 
-                int val = lib.DacInterface.Request(Desktop.DacRequests.GCHEAPDETAILS_STATIC_DATA, 0, null, (uint)buffer.Length, buffer);
+                int val = lib.Request(DacRequests.GCHEAPDETAILS_STATIC_DATA, 0, null, (uint)buffer.Length, buffer);
                 if ((uint)val == (uint)0x80070057)
                     return new Desktop.LegacyRuntime(this, _dataTarget, lib, Desktop.DesktopVersion.v4, 10000);
                 else
@@ -199,8 +200,8 @@ namespace Microsoft.Diagnostics.Runtime
 
             if (_dataTarget.IsMinidump)
                 _dataTarget.SymbolLocator.PrefetchBinary(ModuleInfo.FileName, (int)ModuleInfo.TimeStamp, (int)ModuleInfo.FileSize);
-
-            DacLibrary lib = new DacLibrary(_dataTarget, dac);
+            
+            DacLibrary lib = new DacLibrary(dac, _dataTarget.DacDataTarget);
 
             Desktop.DesktopVersion ver;
             if (Flavor == ClrFlavor.Core)
@@ -993,6 +994,8 @@ namespace Microsoft.Diagnostics.Runtime
         private Architecture _architecture;
         private Lazy<ClrInfo[]> _versions;
         private Lazy<ModuleInfo[]> _modules;
+        private Lazy<DacDataTarget> _dacDataTarget;
+
 
         public DataTargetImpl(IDataReader dataReader, IDebugClient client)
         {
@@ -1001,7 +1004,10 @@ namespace Microsoft.Diagnostics.Runtime
             _architecture = _dataReader.GetArchitecture();
             _modules = new Lazy<ModuleInfo[]>(InitModules);
             _versions = new Lazy<ClrInfo[]>(InitVersions);
+            _dacDataTarget = new Lazy<DacDataTarget>(() => new DacDataTarget(this));
         }
+        
+        internal DacDataTarget DacDataTarget => _dacDataTarget.Value;
 
         public override IDataReader DataReader
         {
@@ -1125,80 +1131,6 @@ namespace Microsoft.Diagnostics.Runtime
     }
 
 
-    internal class DacLibrary
-    {
-        #region Variables
-        private IntPtr _library;
-        private DacDataTarget _dacDataTarget;
-        private IXCLRDataProcess _dac;
-        private ISOSDac _sos;
-        private HashSet<object> _release = new HashSet<object>();
-        #endregion
-
-        public DacDataTarget DacDataTarget { get { return _dacDataTarget; } }
-
-        public IXCLRDataProcess DacInterface { get { return _dac; } }
-
-        public ISOSDac SOSInterface
-        {
-            get
-            {
-                if (_sos == null)
-                    _sos = (ISOSDac)_dac;
-
-                return _sos;
-            }
-        }
-
-        public DacLibrary(DataTargetImpl dataTarget, object ix)
-        {
-            _dac = ix as IXCLRDataProcess;
-            if (_dac == null)
-                throw new ArgumentException("clrDataProcess not an instance of IXCLRDataProcess");
-        }
-
-        public DacLibrary(DataTargetImpl dataTarget, string dacDll)
-        {
-            if (dataTarget.ClrVersions.Count == 0)
-                throw new ClrDiagnosticsException(String.Format("Process is not a CLR process!"));
-
-            _library = NativeMethods.LoadLibrary(dacDll);
-            if (_library == IntPtr.Zero)
-                throw new ClrDiagnosticsException("Failed to load dac: " + dacDll);
-
-            IntPtr addr = NativeMethods.GetProcAddress(_library, "CLRDataCreateInstance");
-            _dacDataTarget = new DacDataTarget(dataTarget);
-
-            NativeMethods.CreateDacInstance func = (NativeMethods.CreateDacInstance)Marshal.GetDelegateForFunctionPointer(addr, typeof(NativeMethods.CreateDacInstance));
-            Guid guid = new Guid("5c552ab6-fc09-4cb3-8e36-22fa03c798b7");
-            int res = func(ref guid, _dacDataTarget, out object obj);
-
-            if (res == 0)
-                _dac = obj as IXCLRDataProcess;
-
-            if (_dac == null)
-                throw new ClrDiagnosticsException("Failure loading DAC: CreateDacInstance failed 0x" + res.ToString("x"), ClrDiagnosticsException.HR.DacError);
-        }
-
-        ~DacLibrary()
-        {
-            foreach (object obj in _release)
-                Marshal.FinalReleaseComObject(obj);
-
-            if (_dac != null)
-                Marshal.FinalReleaseComObject(_dac);
-
-            if (_library != IntPtr.Zero)
-                NativeMethods.FreeLibrary(_library);
-        }
-
-        internal void AddToReleaseList(object obj)
-        {
-            Debug.Assert(Marshal.IsComObject(obj));
-            _release.Add(obj);
-        }
-    }
-
     internal class DacDataTarget : IDacDataTarget, IMetadataLocator, ICorDebug.ICorDebugDataTarget
     {
         private DataTargetImpl _dataTarget;
@@ -1248,26 +1180,26 @@ namespace Microsoft.Diagnostics.Runtime
                 throw new Exception();
         }
 
-        public void GetMachineType(out IMAGE_FILE_MACHINE machineType)
+        public void GetMachineType(out uint machineType)
         {
             var arch = _dataReader.GetArchitecture();
 
             switch (arch)
             {
                 case Architecture.Amd64:
-                    machineType = IMAGE_FILE_MACHINE.AMD64;
+                    machineType = (uint)IMAGE_FILE_MACHINE.AMD64;
                     break;
 
                 case Architecture.X86:
-                    machineType = IMAGE_FILE_MACHINE.I386;
+                    machineType = (uint)IMAGE_FILE_MACHINE.I386;
                     break;
 
                 case Architecture.Arm:
-                    machineType = IMAGE_FILE_MACHINE.THUMB2;
+                    machineType = (uint)IMAGE_FILE_MACHINE.THUMB2;
                     break;
 
                 default:
-                    machineType = IMAGE_FILE_MACHINE.UNKNOWN;
+                    machineType = (uint)IMAGE_FILE_MACHINE.UNKNOWN;
                     break;
             }
         }

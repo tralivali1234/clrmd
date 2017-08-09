@@ -96,7 +96,6 @@
     <Compile Include="Debugger\IDebugSystemObjects3.cs" />
     <Compile Include="Debugger\Structs.cs" />
     <Compile Include="Desktop\com.cs" />
-    <Compile Include="DacInterfaces.cs" />
     <Compile Include="Desktop\lockinspection.cs" />
     <Compile Include="Desktop\threadpool.cs" />
     <Compile Include="Desktop\domains.cs" />
@@ -164,6 +163,12 @@
     <Compile Include="Utilities\SymbolLocator.Async.cs" />
     <Compile Include="Utilities\SymbolLocator.cs" />
     <Compile Include="Utilities\SymbolPath.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Diagnostics.Runtime.Private\Microsoft.Diagnostics.Runtime.Private.csproj">
+      <Project>{7f2512d6-8c84-4ad0-bb2c-5bb81b33fb97}</Project>
+      <Name>Microsoft.Diagnostics.Runtime.Private</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

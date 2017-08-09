@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using Microsoft.Diagnostics.Runtime.Private;
 using Microsoft.Diagnostics.Runtime.Utilities;
 using System;
 using System.Collections.Generic;
@@ -1563,7 +1564,7 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
                 if (data == null)
                     return null;
 
-                cet = data.ElementType;
+                cet = (ClrElementType)data.ElementType;
             }
 
             if (cet == ClrElementType.Unknown)

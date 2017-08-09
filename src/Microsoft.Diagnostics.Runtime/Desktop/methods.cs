@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using Microsoft.Diagnostics.Runtime.Private;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -72,7 +73,7 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
             _runtime = runtime;
             _sig = runtime.GetNameForMD(md);
             _ip = mdData.NativeCodeAddr;
-            _jit = mdData.JITType;
+            _jit = (MethodCompilationType)mdData.JITType;
             _attrs = attrs;
             _token = mdData.MDToken;
             _gcInfo = mdData.GCInfo;

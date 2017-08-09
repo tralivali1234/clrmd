@@ -8,6 +8,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.Runtime.Utilities;
 using System.Linq;
+using Microsoft.Diagnostics.Runtime.Private;
 
 namespace Microsoft.Diagnostics.Runtime.Desktop
 {

@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Microsoft.Diagnostics.Runtime.Desktop;
+using Microsoft.Diagnostics.Runtime.Private;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -33,26 +34,18 @@ namespace Microsoft.Diagnostics.Runtime.Native
             if (_dacRawVersion != 10 && _dacRawVersion != 11)
                 throw new ClrDiagnosticsException("Unsupported dac version.", ClrDiagnosticsException.HR.DacError);
 
+            _sos = lib.GetRawInterface<ISOSNative>();
+            _sosNativeSerializedExceptionSupport = lib.TryGetRawInterface<ISOSNativeSerializedExceptionSupport>();
             _heap = new Lazy<NativeHeap>(() => new NativeHeap(this, NativeModules));
+        }
+
+        protected override void InitApi()
+        {
         }
 
         public override ClrMethod GetMethodByHandle(ulong methodHandle)
         {
             return null;
-        }
-
-        protected override void InitApi()
-        {
-            if (_sos == null)
-            {
-                var dac = _library.DacInterface;
-                if (!(dac is ISOSNative))
-                    throw new ClrDiagnosticsException("This version of mrt100 is too old.", ClrDiagnosticsException.HR.DataRequestError);
-
-                _sos = (ISOSNative)dac;
-            }
-
-            _sosNativeSerializedExceptionSupport = _library.DacInterface as ISOSNativeSerializedExceptionSupport;
         }
 
         public override ClrHeap Heap => _heap.Value;

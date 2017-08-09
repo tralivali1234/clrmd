@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd">
   <metadata minClientVersion="2.12">
     <id>Microsoft.Diagnostics.Runtime</id>
-    <version>0.8.31-beta</version>
+    <version>0.8.9</version>
     <title>CLR Memory Diagnostics (ClrMD)</title>
     <authors>Microsoft</authors>
     <owners>Microsoft</owners>
@@ -32,6 +32,8 @@ Aside from various bugfixes, here are some noteworthy changes in this release:
   <files>
     <file src="..\Bin\Microsoft.Diagnostics.Runtime.dll" target="lib/net40" exclude="" />
     <file src="..\Bin\Microsoft.Diagnostics.Runtime.xml" target="lib/net40" exclude="" />
+    <file src="..\Bin\Microsoft.Diagnostics.Runtime.Private.dll" target="lib/net40" exclude="" />
+    <file src="..\Bin\Microsoft.Diagnostics.Runtime.Private.xml" target="lib/net40" exclude="" />
     <file src="License-Stable.rtf" target="" exclude="" />
   </files>
 </package>

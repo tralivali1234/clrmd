@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Microsoft.Diagnostics.Runtime.Desktop;
+using Microsoft.Diagnostics.Runtime.Private;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -811,7 +812,6 @@ namespace Microsoft.Diagnostics.Runtime
     {
         private static ulong[] s_emptyPointerArray = new ulong[0];
         protected DacLibrary _library;
-        protected IXCLRDataProcess _dacInterface;
         private MemoryReader _cache;
         protected IDataReader _dataReader;
         protected DataTargetImpl _dataTarget;
@@ -822,7 +822,7 @@ namespace Microsoft.Diagnostics.Runtime
             get
             {
                 if (_corDebugProcess == null)
-                    _corDebugProcess = ICorDebug.CLRDebugging.CreateICorDebugProcess(ClrInfo.ModuleInfo.ImageBase, _library.DacDataTarget, _dataTarget.FileLoader);
+                    _corDebugProcess = ICorDebug.CLRDebugging.CreateICorDebugProcess(ClrInfo.ModuleInfo.ImageBase, _dataTarget.DacDataTarget, _dataTarget.FileLoader);
 
                 return _corDebugProcess;
             }
@@ -831,15 +831,13 @@ namespace Microsoft.Diagnostics.Runtime
         public RuntimeBase(ClrInfo info, DataTargetImpl dataTarget, DacLibrary lib)
         {
             Debug.Assert(lib != null);
-            Debug.Assert(lib.DacInterface != null);
 
             ClrInfo = info;
             _dataTarget = dataTarget;
             _library = lib;
-            _dacInterface = _library.DacInterface;
             InitApi();
 
-            _dacInterface.Flush();
+            lib.Flush();
 
             IGCInfo data = GetGCInfo();
             if (data != null)
@@ -1064,7 +1062,7 @@ namespace Microsoft.Diagnostics.Runtime
             if (output != null)
                 outSize = (uint)output.Length;
 
-            int result = _dacInterface.Request(id, inSize, input, outSize, output);
+            int result = _library.Request(id, inSize, input, outSize, output);
 
             return result >= 0;
         }
@@ -1141,7 +1139,7 @@ namespace Microsoft.Diagnostics.Runtime
 
             if (!Request(id, input, output))
                 return false;
-
+            
             GCHandle handle = GCHandle.Alloc(output, GCHandleType.Pinned);
             t = (T)Marshal.PtrToStructure(handle.AddrOfPinnedObject(), typeof(T));
             handle.Free();

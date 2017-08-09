@@ -598,11 +598,6 @@ namespace Microsoft.Diagnostics.Runtime
 
     internal class NativeMethods
     {
-        public static bool LoadNative(string dllName)
-        {
-            return LoadLibrary(dllName) != IntPtr.Zero;
-        }
-
         private const string Kernel32LibraryName = "kernel32.dll";
 
         public const uint FILE_MAP_READ = 4;
@@ -624,7 +619,7 @@ namespace Microsoft.Diagnostics.Runtime
            dwDesiredAccess, uint dwFileOffsetHigh, uint dwFileOffsetLow,
            IntPtr dwNumberOfBytesToMap);
 
-        [DllImportAttribute(Kernel32LibraryName)]
+        [DllImport(Kernel32LibraryName)]
         public static extern void RtlMoveMemory(IntPtr destination, IntPtr source, IntPtr numberBytes);
 
         [DllImport(Kernel32LibraryName, SetLastError = true, PreserveSig = true)]
@@ -640,7 +635,7 @@ namespace Microsoft.Diagnostics.Runtime
             return LoadLibraryEx(lpFileName, 0, LoadLibraryFlags.NoFlags);
         }
 
-        [DllImportAttribute(Kernel32LibraryName, SetLastError = true)]
+        [DllImport(Kernel32LibraryName, SetLastError = true)]
         public static extern IntPtr LoadLibraryEx(String fileName, int hFile, LoadLibraryFlags dwFlags);
 
         [Flags]
@@ -691,14 +686,6 @@ namespace Microsoft.Diagnostics.Runtime
         [DefaultDllImportSearchPaths(DllImportSearchPath.LegacyBehavior)]
         [DllImport("dbgeng.dll")]
         internal static extern uint DebugCreate(ref Guid InterfaceId, [MarshalAs(UnmanagedType.IUnknown)] out object Interface);
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        internal delegate int CreateDacInstance([In, ComAliasName("REFIID")] ref Guid riid,
-                                       [In, MarshalAs(UnmanagedType.Interface)] IDacDataTarget data,
-                                       [Out, MarshalAs(UnmanagedType.IUnknown)] out object ppObj);
-
-
-        [DllImport("kernel32.dll")]
-        internal static extern IntPtr GetProcAddress(IntPtr hModule, string procedureName);
 
         internal static bool IsEqualFileVersion(string file, VersionInfo version)
         {
