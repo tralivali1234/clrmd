@@ -9,6 +9,7 @@ syntax: glob
 *.sln.docstates
 *.lock.json
 
+Tools/
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
