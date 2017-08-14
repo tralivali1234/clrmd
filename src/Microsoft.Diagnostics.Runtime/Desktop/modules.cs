@@ -101,10 +101,8 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
                 {
                     try
                     {
-                        using (PEFile pefile = new PEFile(new ReadVirtualStream(_runtime.DataReader, (long)ImageBase, (long)(Size > 0 ? Size : 0x1000)), true))
-                        {
-                            _pdb = pefile.PdbInfo ?? s_failurePdb;
-                        }
+                        PEImage pefile = new PEImage(new ReadVirtualStream(_runtime.DataReader, (long)ImageBase, (long)(Size > 0 ? Size : 0x1000)), true);
+                        _pdb = pefile.DefaultPdb ?? s_failurePdb;
                     }
                     catch
                     {

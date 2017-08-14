@@ -94,6 +94,7 @@ namespace Microsoft.Diagnostics.Runtime.Tests
             SymbolLocator _locator = GetLocator();
             string dac = _locator.FindBinary(WellKnownDac, WellKnownDacTimeStamp, WellKnownDacImageSize, false);
             Assert.IsNotNull(dac);
+
             Assert.IsTrue(File.Exists(dac));
         }
 
@@ -129,7 +130,8 @@ namespace Microsoft.Diagnostics.Runtime.Tests
 
             Assert.IsNotNull(dac);
             Assert.IsTrue(File.Exists(dac));
-            new PEFile(dac).Dispose();  // This will throw if the image is invalid.
+            using (Stream file = File.OpenRead(dac))
+                new PEImage(file, false);  // This will throw if the image is invalid.
 
             // Ensure we got the same answer for everything.
             foreach (var task in tasks)

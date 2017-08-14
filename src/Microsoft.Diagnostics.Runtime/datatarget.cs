@@ -435,12 +435,23 @@ namespace Microsoft.Diagnostics.Runtime
 
         /// <summary>
         /// Returns a PEFile from a stream constructed using instance fields of this object.
-        /// If the PEFile cannot be constructed correctly, null is returned
+        /// If the PEFile cannot be constructed correctly, null is returned.
         /// </summary>
         /// <returns></returns>
+        [Obsolete("Use GetPEImage.")]
         public PEFile GetPEFile()
         {
-            return PEFile.TryLoad(new ReadVirtualStream(_dataReader, (long)ImageBase, (long)FileSize), true);
+            return PEFile.TryLoad(new ReadVirtualStream(_dataReader, (long)ImageBase, FileSize), true);
+        }
+
+        /// <summary>
+        /// Returns a PEImage from a stream constructed using instance fields of this object.
+        /// If the PEImage cannot be constructed correctly, null is returned.
+        /// </summary>
+        /// <returns></returns>
+        public PEImage GetPEImage()
+        {
+            return new PEImage(new ReadVirtualStream(_dataReader, (long)ImageBase, (long)FileSize), true);
         }
 
         /// <summary>
@@ -492,32 +503,14 @@ namespace Microsoft.Diagnostics.Runtime
             if (_pdb != null && _managed != null)
                 return;
             
-            PEFile file = null;
             try
             {
-                file = PEFile.TryLoad(new ReadVirtualStream(_dataReader, (long)ImageBase, (long)FileSize), true);
-                if (file == null)
-                    return;
-
-                _managed = file.Header.ComDescriptorDirectory.VirtualAddress != 0;
-
-                if (file.GetPdbSignature(out string pdbName, out Guid guid, out int age))
-                {
-                    _pdb = new PdbInfo()
-                    {
-                        FileName = pdbName,
-                        Guid = guid,
-                        Revision = age
-                    };
-                }
+                PEImage file = new PEImage(new ReadVirtualStream(_dataReader, (long)ImageBase, FileSize), true);
+                _managed = file.IsManaged;
+                _pdb = file.DefaultPdb;
             }
             catch
             {
-            }
-            finally
-            {
-                if (file != null)
-                    file.Dispose();
             }
         }
 
@@ -1263,29 +1256,12 @@ namespace Microsoft.Diagnostics.Runtime
                     bytesRead = 0;
                     return -1;
                 }
+                
+                PEImage file = _dataTarget.FileLoader.LoadPEImage(filePath);
+                int rva = checked((int)(address - info.ImageBase));
 
-                // We do not put a using statement here to prevent needing to load/unload the binary over and over.
-                PEFile file = _dataTarget.FileLoader.LoadPEFile(filePath);
-                if (file?.Header != null)
-                {
-                    PEBuffer peBuffer = file.AllocBuff();
-
-                    int rva = checked((int)(address - info.ImageBase));
-
-                    if (file.Header.TryGetFileOffsetFromRva(rva, out rva))
-                    {
-                        byte* dst = (byte*)buffer.ToPointer();
-                        byte* src = peBuffer.Fetch(rva, bytesRequested);
-
-                        for (int i = 0; i < bytesRequested; i++)
-                            dst[i] = src[i];
-
-                        bytesRead = bytesRequested;
-                        return 0;
-                    }
-
-                    file.FreeBuff(peBuffer);
-                }
+                bytesRead = file.Read(buffer, rva, bytesRequested);
+                return 0;
             }
 
             bytesRead = 0;
@@ -1353,34 +1329,21 @@ namespace Microsoft.Diagnostics.Runtime
                 return -1;
 
             // We do not put a using statement here to prevent needing to load/unload the binary over and over.
-            PEFile file = _dataTarget.FileLoader.LoadPEFile(filePath);
+            PEImage file = _dataTarget.FileLoader.LoadPEImage(filePath);
             if (file == null)
                 return -1;
 
-            var comDescriptor = file.Header.ComDescriptorDirectory;
-            if (comDescriptor.VirtualAddress == 0)
+            if (!file.IsManaged)
                 return -1;
 
-            PEBuffer peBuffer = file.AllocBuff();
-            if (mdRva == 0)
-            {
-                IntPtr hdr = file.SafeFetchRVA((int)comDescriptor.VirtualAddress, (int)comDescriptor.Size, peBuffer);
+            CorHeader corhdr = file.CorHeader;
+            if (corhdr == null || bufferSize < corhdr.Metadata.Size)
+                return -1;
+            
+            mdRva = corhdr.Metadata.VirtualAddress;
+            bufferSize = corhdr.Metadata.Size;
 
-                IMAGE_COR20_HEADER corhdr = (IMAGE_COR20_HEADER)Marshal.PtrToStructure(hdr, typeof(IMAGE_COR20_HEADER));
-                if (bufferSize < corhdr.MetaData.Size)
-                {
-                    file.FreeBuff(peBuffer);
-                    return -1;
-                }
-
-                mdRva = corhdr.MetaData.VirtualAddress;
-                bufferSize = corhdr.MetaData.Size;
-            }
-
-            IntPtr ptr = file.SafeFetchRVA((int)mdRva, (int)bufferSize, peBuffer);
-            Marshal.Copy(ptr, buffer, 0, (int)bufferSize);
-
-            file.FreeBuff(peBuffer);
+            file.Read(buffer, (int)mdRva, (int)bufferSize);
             return 0;
         }
     }

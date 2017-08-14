@@ -55,6 +55,7 @@
     <None Include="Targets\GCRoot.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <Compile Include="PEImageTests.cs" />
     <Compile Include="TypeTests.cs" />
     <Compile Include="MinidumpTests.cs" />
     <Compile Include="ModuleTests.cs" />

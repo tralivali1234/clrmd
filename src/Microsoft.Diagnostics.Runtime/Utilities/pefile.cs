@@ -17,6 +17,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
     /// 
     /// It can read both 32 and 64 bit PE files.  
     /// </summary>
+    [Obsolete]
     public unsafe sealed class PEFile : IDisposable
     {
         /// <summary>
@@ -144,95 +145,11 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
                 return _pdb;
             }
         }
-        internal static bool TryGetIndexProperties(string filename, out int timestamp, out int filesize)
-        {
-            try
-            {
-                using (PEFile pefile = new PEFile(filename))
-                {
-                    var header = pefile.Header;
-                    timestamp = header.TimeDateStampSec;
-                    filesize = (int)header.SizeOfImage;
-                    return true;
-                }
-            }
-            catch
-            {
-                timestamp = 0;
-                filesize = 0;
-                return false;
-            }
-        }
-
-        internal static bool TryGetIndexProperties(Stream stream, bool virt, out int timestamp, out int filesize)
-        {
-            try
-            {
-                using (PEFile pefile = new PEFile(stream, virt))
-                {
-                    var header = pefile.Header;
-                    timestamp = header.TimeDateStampSec;
-                    filesize = (int)header.SizeOfImage;
-                    return true;
-                }
-            }
-            catch
-            {
-                timestamp = 0;
-                filesize = 0;
-                return false;
-            }
-        }
-
         /// <summary>
         /// Whether this object has been disposed.
         /// </summary>
         public bool Disposed { get; private set; }
-
-        /// <summary>
-        /// Gets the File Version Information that is stored as a resource in the PE file.  (This is what the
-        /// version tab a file's property page is populated with).  
-        /// </summary>
-        public FileVersionInfo GetFileVersionInfo()
-        {
-            var resources = GetResources();
-            var versionNode = ResourceNode.GetChild(ResourceNode.GetChild(resources, "Version"), "1");
-            if (versionNode == null)
-                return null;
-            if (!versionNode.IsLeaf && versionNode.Children.Count == 1)
-                versionNode = versionNode.Children[0];
-
-
-            var buff = AllocBuff();
-            byte* bytes = versionNode.FetchData(0, versionNode.DataLength, buff);
-            var ret = new FileVersionInfo(bytes, versionNode.DataLength);
-
-            FreeBuff(buff);
-            return ret;
-        }
-        /// <summary>
-        /// For side by side dlls, the manifest that decribes the binding information is stored as the RT_MANIFEST resource, and it
-        /// is an XML string.   This routine returns this.  
-        /// </summary>
-        /// <returns></returns>
-        public string GetSxSManfest()
-        {
-            var resources = GetResources();
-            var manifest = ResourceNode.GetChild(ResourceNode.GetChild(resources, "RT_MANIFEST"), "1");
-            if (manifest == null)
-                return null;
-            if (!manifest.IsLeaf && manifest.Children.Count == 1)
-                manifest = manifest.Children[0];
-
-            var buff = AllocBuff();
-            byte* bytes = manifest.FetchData(0, manifest.DataLength, buff);
-            string ret = null;
-            using (var stream = new UnmanagedMemoryStream(bytes, manifest.DataLength))
-            using (var textReader = new StreamReader(stream))
-                ret = textReader.ReadToEnd();
-            FreeBuff(buff);
-            return ret;
-        }
+        
 
         /// <summary>
         /// Closes any file handles and cleans up resources.  
@@ -247,15 +164,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
 
             Disposed = true;
         }
-
-        // TODO make public?
-        internal ResourceNode GetResources()
-        {
-            if (Header.ResourceDirectory.VirtualAddress == 0 || Header.ResourceDirectory.Size < sizeof(IMAGE_RESOURCE_DIRECTORY))
-                return null;
-            var ret = new ResourceNode("", Header.FileOffsetOfResources, this, false, true);
-            return ret;
-        }
+        
 
         #region private
         private PEBuffer _headerBuff;
@@ -295,6 +204,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
     /// PEFile are read or mapped into memory, this class can parse it when given a pointer to it.
     /// It can read both 32 and 64 bit PE files.  
     /// </summary>
+    [Obsolete]
     public unsafe sealed class PEHeader
     {
         /// <summary>
@@ -362,14 +272,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         {
             return (int)((byte*)ptr - (byte*)_dosHeader);
         }
-
-        /// <summary>
-        /// Given a relative virtual address (displacement from start of the image) return the virtual address to data in a mapped PE file
-        /// </summary>
-        public void* RvaToVirtualAddress(int rva)
-        {
-            return ((byte*)_dosHeader) + rva;
-        }
+        
         /// <summary>
         /// Given a relative virtual address (displacement from start of the image) return a offset in the file data for that data.  
         /// </summary>
@@ -712,6 +615,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
     /// <summary>
     /// The Machine types supporte by the portable executable (PE) File format
     /// </summary>
+    [Obsolete]
     public enum MachineType : ushort
     {
         /// <summary>
@@ -739,6 +643,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
     /// <summary>
     /// Represents a Portable Executable (PE) Data directory.  This is just a well known optional 'Blob' of memory (has a starting point and size)
     /// </summary>
+    [Obsolete]
     public struct IMAGE_DATA_DIRECTORY
     {
         /// <summary>
@@ -754,6 +659,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
     /// <summary>
     /// FileVersionInfo reprents the extended version formation that is optionally placed in the PE file resource area. 
     /// </summary>
+    [Obsolete]
     public unsafe sealed class FileVersionInfo
     {
         // TODO incomplete, but this is all I need.  
@@ -881,6 +787,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         #endregion
     }
 
+    [Obsolete]
     internal unsafe sealed class ResourceNode
     {
         public string Name { get; private set; }
@@ -1077,7 +984,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal struct IMAGE_OPTIONAL_HEADER64
     {
-        public ushort Magic;
+        public ushort Magic; 
         public byte MajorLinkerVersion;
         public byte MinorLinkerVersion;
         public uint SizeOfCode;

@@ -849,9 +849,9 @@ namespace Microsoft.Diagnostics.Runtime.Interop
     public struct IMAGE_COR20_HEADER_ENTRYPOINT
     {
         [FieldOffset(0)]
-        private UInt32 _token;
+        internal UInt32 _token;
         [FieldOffset(0)]
-        private UInt32 _RVA;
+        internal UInt32 _RVA;
     }
 
     [StructLayout(LayoutKind.Sequential)]

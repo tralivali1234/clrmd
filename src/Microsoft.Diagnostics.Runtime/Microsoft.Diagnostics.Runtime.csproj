@@ -132,6 +132,7 @@
     <Compile Include="Native\NativeRuntime.cs" />
     <Compile Include="Native\NativeTypes.cs" />
     <Compile Include="ClrRuntime.cs" />
+    <Compile Include="Utilities\PEImage.cs" />
     <Compile Include="Utilities\sigparser.cs" />
     <Compile Include="ClrThread.cs" />
     <Compile Include="ClrType.cs" />

@@ -282,23 +282,17 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
             if (File.Exists(fullPath))
             {
                 if (!checkProperties)
-                {
                     return true;
-                }
 
                 try
                 {
-                    using (PEFile pefile = new PEFile(fullPath))
+                    using (Stream file = File.OpenRead(fullPath))
                     {
-                        var header = pefile.Header;
-                        if (!checkProperties || (header.TimeDateStampSec == buildTimeStamp && header.SizeOfImage == imageSize))
-                        {
+                        PEImage image = new PEImage(file, false);
+                        if (buildTimeStamp == image.IndexTimeStamp && imageSize == image.IndexFileSize)
                             return true;
-                        }
                         else
-                        {
                             Trace("Rejected file '{0}' because file size and time stamp did not match.", fullPath);
-                        }
                     }
                 }
                 catch (Exception e)
@@ -730,7 +724,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
 
     internal class FileLoader : ICorDebug.ICLRDebuggingLibraryProvider
     {
-        private Dictionary<string, PEFile> _pefileCache = new Dictionary<string, PEFile>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, PEImage> _pefileCache = new Dictionary<string, PEImage>(StringComparer.OrdinalIgnoreCase);
         private DataTarget _dataTarget;
         
         public FileLoader(DataTarget dt)
@@ -738,22 +732,19 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
             _dataTarget = dt;
         }
 
-        public PEFile LoadPEFile(string fileName)
+        public PEImage LoadPEImage(string fileName)
         {
             if (string.IsNullOrEmpty(fileName))
                 return null;
 
-            if (_pefileCache.TryGetValue(fileName, out PEFile result))
+            if (_pefileCache.TryGetValue(fileName, out PEImage result))
             {
-                if (!result.Disposed)
-                    return result;
-
                 _pefileCache.Remove(fileName);
             }
 
             try
             {
-                result = new PEFile(fileName);
+                result = new PEImage(File.OpenRead(fileName), false);
                 _pefileCache[fileName] = result;
             }
             catch
