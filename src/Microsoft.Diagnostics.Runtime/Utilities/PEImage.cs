@@ -13,6 +13,10 @@ using System.Threading.Tasks;
 
 namespace Microsoft.Diagnostics.Runtime.Utilities
 {
+
+    /// <summary>
+    /// A class to read information out of PE images (dll/exe).
+    /// </summary>
     public unsafe class PEImage
     {
         private const ushort ExpectedDosHeaderMagic = 0x5A4D;   // MZ
@@ -35,6 +39,27 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         private Lazy<List<PdbInfo>> _pdbs;
         private Lazy<Interop.IMAGE_DATA_DIRECTORY[]> _directories;
 
+        private Interop.IMAGE_DATA_DIRECTORY GetDirectory(int index) => _directories.Value[index];
+        private int HeaderOffset => _peHeaderOffset + sizeof(uint);
+        private int OptionalHeaderOffset => HeaderOffset + sizeof(IMAGE_FILE_HEADER);
+        private int SpecificHeaderOffset => OptionalHeaderOffset + sizeof(IMAGE_OPTIONAL_HEADER_AGNOSTIC);
+        private int DataDirectoryOffset => SpecificHeaderOffset + (IsPE64 ? 5 * 8 : 6 * 4);
+        private int ImageDataDirectoryOffset => DataDirectoryOffset + ImageDataDirectoryCount * sizeof(Interop.IMAGE_DATA_DIRECTORY);
+
+        /// <summary>
+        /// Constructs a PEImage class for a given PE image (dll/exe) on disk.
+        /// </summary>
+        /// <param name="stream">A Stream that contains a PE image at its 0th offset.  This stream must be seekable.</param>
+        public PEImage(Stream stream)
+            : this(stream, false)
+        {
+        }
+
+        /// <summary>
+        /// Constructs a PEImage class for a given PE image (dll/exe) on disk.
+        /// </summary>
+        /// <param name="stream">A Stream that contains a PE image at its 0th offset.  This stream must be seekable.</param>
+        /// <param name="virt">Whether stream points to a PE image mapped into an address space (such as in a live process or crash dump).</param>
         public PEImage(Stream stream, bool virt)
         {
             if (!stream.CanSeek)
@@ -67,39 +92,97 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
             _pdbs = new Lazy<List<PdbInfo>>(ReadPdbs);
         }
 
+        /// <summary>
+        /// Returns true if the given Stream contains a valid DOS header and PE signature.
+        /// </summary>
         public bool IsValid { get; private set; }
+
+        /// <summary>
+        /// Returns true if this image is for a 64bit processor.
+        /// </summary>
         public bool IsPE64 => OptionalHeader != null ? OptionalHeader.Magic != 0x010b : false;
+
+        /// <summary>
+        /// Returns true if this image is managed.  (.Net image)
+        /// </summary>
         public bool IsManaged => GetDirectory(14).VirtualAddress != 0;
+
+        /// <summary>
+        /// Returns the timestamp that this PE image is indexed under.
+        /// </summary>
         public int IndexTimeStamp => (int)(Header?.TimeDateStamp ?? 0);
 
+        /// <summary>
+        /// Returns the file size that this PE image is indexed under.
+        /// </summary>
         public int IndexFileSize => (int)(OptionalHeader?.SizeOfImage ?? 0);
 
+        /// <summary>
+        /// Returns the managed header information for this image.  Undefined behavior if IsValid is false.
+        /// </summary>
         public CorHeader CorHeader => _corHeader.Value;
+
+        /// <summary>
+        /// Returns a wrapper over this PE image's IMAGE_FILE_HEADER structure.  Undefined behavior if IsValid is false.
+        /// </summary>
         public ImageFileHeader Header => _imageFileHeader.Value;
+
+        /// <summary>
+        /// Returns a wrapper over this PE image's IMAGE_OPTIONAL_HEADER.  Undefined behavior if IsValid is false.
+        /// </summary>
         public ImageOptionalHeader OptionalHeader => _imageOptionalHeader.Value;
+
+        /// <summary>
+        /// Returns a collection of IMAGE_SECTION_HEADERs in the PE iamge.  Undefined behavior if IsValid is false.
+        /// </summary>
         public ReadOnlyCollection<SectionHeader> Sections => _sections.Value.AsReadOnly();
+
+        /// <summary>
+        /// Enumerates a list of PDBs associated with this PE image.  PE images can contain multiple PDB entries,
+        /// but by convention it's usually the last entry that is the most up to date.  Unless you need to enumerate
+        /// all PDBs for some reason, you should use DefaultPdb instead.
+        /// Undefined behavior if IsValid is false.
+        /// </summary>
         public ReadOnlyCollection<PdbInfo> Pdbs => _pdbs.Value.AsReadOnly();
+
+        /// <summary>
+        /// Returns the PDB information for this module.  If this image does not contain PDB info (or that information
+        /// wasn't included in Stream) this returns null.  If multiple PDB streams are present, this method returns the
+        /// last entry.
+        /// </summary>
         public PdbInfo DefaultPdb => Pdbs.LastOrDefault();
 
-        public int RvaToOffset(int rva)
+        /// <summary>
+        /// Allows you to convert between a virtual address to a stream offset for this module.
+        /// </summary>
+        /// <param name="virtualAddress">The address to translate.</param>
+        /// <returns>The position in the stream of the data, -1 if the virtual address doesn't map to any location of the PE image.</returns>
+        public int RvaToOffset(int virtualAddress)
         {
             if (_virt)
-                return rva;
+                return virtualAddress;
 
             List<SectionHeader> sections = _sections.Value;
             for (int i = 0; i < sections.Count; i++)
-                if (sections[i].VirtualAddress <= rva && rva < sections[i].VirtualAddress + sections[i].VirtualSize)
-                    return (int)sections[i].PointerToRawData + (rva - (int)sections[i].VirtualAddress);
+                if (sections[i].VirtualAddress <= virtualAddress && virtualAddress < sections[i].VirtualAddress + sections[i].VirtualSize)
+                    return (int)sections[i].PointerToRawData + (virtualAddress - (int)sections[i].VirtualAddress);
 
             return -1;
         }
         
-        public int Read(IntPtr dest, int rva, int bytesRequested)
+        /// <summary>
+        /// Reads data out of PE image into a native buffer.
+        /// </summary>
+        /// <param name="dest">The location to write the data.</param>
+        /// <param name="virtualAddress">The address to read from.</param>
+        /// <param name="bytesRequested">The number of bytes to read.</param>
+        /// <returns>The number of bytes actually read from the image and written to dest.</returns>
+        public int Read(IntPtr dest, int virtualAddress, int bytesRequested)
         {
             byte[] buffer = _buffer;
             EnsureSize(ref buffer, bytesRequested);
 
-            int offset = RvaToOffset(rva);
+            int offset = RvaToOffset(virtualAddress);
             if (offset == -1)
                 return 0;
 
@@ -111,9 +194,16 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
             return read;
         }
 
-        public int Read(byte[] dest, int rva, int bytesRequested)
+        /// <summary>
+        /// Reads data out of PE image into a byte array.
+        /// </summary>
+        /// <param name="dest">The location to write the data.</param>
+        /// <param name="virtualAddress">The address to read from.</param>
+        /// <param name="bytesRequested">The number of bytes to read.</param>
+        /// <returns>The number of bytes actually read from the image and written to dest.</returns>
+        public int Read(byte[] dest, int virtualAddress, int bytesRequested)
         {
-            int offset = RvaToOffset(rva);
+            int offset = RvaToOffset(virtualAddress);
             if (offset == -1)
                 return 0;
 
@@ -122,13 +212,6 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
             return read;
         }
 
-        private Interop.IMAGE_DATA_DIRECTORY GetDirectory(int index) => _directories.Value[index];
-        private int HeaderOffset => _peHeaderOffset + sizeof(uint);
-        private int OptionalHeaderOffset => HeaderOffset + sizeof(IMAGE_FILE_HEADER);
-        private int SpecificHeaderOffset => OptionalHeaderOffset + sizeof(IMAGE_OPTIONAL_HEADER_AGNOSTIC);
-        private int DataDirectoryOffset => SpecificHeaderOffset + (IsPE64 ? 5 * 8 : 6 * 4);
-        private int ImageDataDirectoryOffset => DataDirectoryOffset + ImageDataDirectoryCount * sizeof(Interop.IMAGE_DATA_DIRECTORY);
-        
 
         private List<SectionHeader> ReadSections()
         {
@@ -270,14 +353,21 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         
         private ImageFileHeader ReadImageFileHeader()
         {
+            if (!IsValid)
+                return null;
+
             IMAGE_FILE_HEADER? header = Read<IMAGE_FILE_HEADER>(HeaderOffset);
             return header.HasValue ? new ImageFileHeader(header.Value) : null;
         }
         
         private Interop.IMAGE_DATA_DIRECTORY[] ReadDataDirectories()
         {
-            SeekTo(DataDirectoryOffset);
             Interop.IMAGE_DATA_DIRECTORY[] directories = new Interop.IMAGE_DATA_DIRECTORY[ImageDataDirectoryCount];
+
+            if (!IsValid)
+                return directories;
+
+            SeekTo(DataDirectoryOffset);
             for (int i = 0; i < directories.Length; i++)
                 directories[i] = Read<Interop.IMAGE_DATA_DIRECTORY>() ?? default(Interop.IMAGE_DATA_DIRECTORY);
 
@@ -324,6 +414,10 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         }
     }
 
+    /// <summary>
+    /// A wrapper over the IMAGE_SECTION_HEADER structure.
+    /// https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx
+    /// </summary>
     public class SectionHeader
     {
         public string Name { get; private set; }
@@ -354,6 +448,9 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         public override string ToString() => Name;
     }
 
+    /// <summary>
+    /// A wrapper for the IMAGE_COR20_HEADER structure.
+    /// </summary>
     public class CorHeader
     {
         private IMAGE_COR20_HEADER _header;
@@ -363,6 +460,9 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
             _header = header;
         }
 
+        /// <summary>
+        /// A set of COMIMAGE_FLAGS.
+        /// </summary>
         public COMIMAGE_FLAGS Flags => (COMIMAGE_FLAGS)_header.Flags;
         public UInt16 MajorRuntimeVersion => _header.MajorRuntimeVersion;
         public UInt16 MinorRuntimeVersion => _header.MinorRuntimeVersion;
@@ -399,6 +499,9 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         public Interop.IMAGE_DATA_DIRECTORY ManagedNativeHeader => _header.ManagedNativeHeader;
     }
 
+    /// <summary>
+    /// A wrapper over IMAGE_FILE_HEADER.  See https://msdn.microsoft.com/en-us/library/windows/desktop/ms680313(v=vs.85).aspx.
+    /// </summary>
     public class ImageFileHeader
     {
         private IMAGE_FILE_HEADER _header;
@@ -444,6 +547,9 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         public IMAGE_FILE Characteristics => (IMAGE_FILE)_header.Characteristics;
     }
 
+    /// <summary>
+    /// A wrapper over IMAGE_OPTIONAL_HEADER.  See https://msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx.
+    /// </summary>
     public class ImageOptionalHeader
     {
         private bool _32bit;
@@ -469,6 +575,10 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         public uint SizeOfUninitializedData => _optional.SizeOfUninitializedData;
         public uint AddressOfEntryPoint => _optional.AddressOfEntryPoint;
         public uint BaseOfCode => _optional.BaseOfCode;
+
+        /// <summary>
+        /// Only valid in 32bit images.
+        /// </summary>
         public uint BaseOfData => _32bit ? _optional.BaseOfData : throw new InvalidOperationException();
         public ulong ImageBase => _32bit ? _optional.ImageBase : _optional.ImageBase64;
         public uint SectionAlignment => _optional.SectionAlignment;
@@ -509,9 +619,7 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
         public Interop.IMAGE_DATA_DIRECTORY DelayImportDirectory => _directories.Value[13];
         public Interop.IMAGE_DATA_DIRECTORY ComDescriptorDirectory => _directories.Value[14];
     }
-
-
-
+    
     [StructLayout(LayoutKind.Explicit)]
     internal struct IMAGE_OPTIONAL_HEADER_AGNOSTIC
     {
