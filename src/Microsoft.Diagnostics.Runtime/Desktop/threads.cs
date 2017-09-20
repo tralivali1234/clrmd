@@ -60,12 +60,12 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
 
             int methodLen = 0;
             int methodTypeLen = 0;
-
+            string methodName = GetMethodName(_method);
             if (_method != null)
             {
                 methodLen = _method.Name.Length;
                 if (_method.Type != null)
-                    methodTypeLen = _method.Type.Name.Length;
+                    methodTypeLen = methodName.Length;
             }
 
             StringBuilder sb = new StringBuilder(_frameName.Length + methodLen + methodTypeLen + 10);
@@ -80,7 +80,7 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
 
                 if (_method.Type != null)
                 {
-                    sb.Append(_method.Type.Name);
+                    sb.Append(methodName);
                     sb.Append('.');
                 }
 
@@ -89,6 +89,14 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
             }
 
             return sb.ToString();
+        }
+
+        private string GetMethodName(ClrMethod method)
+        {
+            if (method == null || method.Type == null)
+                return "";
+
+            return _method.Type.Name ?? $"md:{_method.Type.MetadataToken:x}";
         }
 
         public DesktopStackFrame(DesktopRuntimeBase runtime, DesktopThread thread, ulong ip, ulong sp, ulong md)
