@@ -1662,11 +1662,20 @@ namespace Microsoft.Diagnostics.Runtime
             if (buffer.Length < bytesRequested)
                 bytesRequested = buffer.Length;
 
+            address = SignExtend(address);
+
             int res = _spaces.ReadVirtual(address, buffer, (uint)bytesRequested, out uint read);
             bytesRead = (int)read;
             return res;
         }
 
+        private ulong SignExtend(ulong address)
+        {
+            if ((address & 0xffffffff80000000ul) == 0x80000000ul)
+                address |= 0xffffffff80000000ul;
+
+            return address;
+        }
 
         private ulong[] GetImageBases()
         {
@@ -1953,7 +1962,8 @@ namespace Microsoft.Diagnostics.Runtime
         public bool ReadMemory(ulong address, IntPtr buffer, int bytesRequested, out int bytesRead)
         {
             SetClientInstance();
-
+            
+            address = SignExtend(address);
             bool res = _spacesPtr.ReadVirtual(address, buffer, (uint)bytesRequested, out uint read) >= 0;
             bytesRead = res ? (int)read : 0;
             return res;
@@ -1962,6 +1972,7 @@ namespace Microsoft.Diagnostics.Runtime
         public int ReadVirtual(ulong address, byte[] buffer, uint bytesRequested, out uint bytesRead)
         {
             SetClientInstance();
+            address = SignExtend(address);
             return _spaces.ReadVirtual(address, buffer, bytesRequested, out bytesRead);
         }
 
