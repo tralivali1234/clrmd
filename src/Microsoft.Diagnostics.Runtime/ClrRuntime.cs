@@ -295,6 +295,11 @@ namespace Microsoft.Diagnostics.Runtime
                     return null;
             }
         }
+
+        /// <summary>
+        /// Returns the raw dac library.
+        /// </summary>
+        public abstract DacLibrary RawDacLibrary { get; }
     }
 
     /// <summary>
@@ -848,6 +853,8 @@ namespace Microsoft.Diagnostics.Runtime
             }
             _dataReader = dataTarget.DataReader;
         }
+
+        public override DacLibrary RawDacLibrary => _library;
 
         public override DataTarget DataTarget
         {

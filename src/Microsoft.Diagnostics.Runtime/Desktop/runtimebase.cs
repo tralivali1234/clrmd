@@ -57,7 +57,6 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
             _mscorlib = new Lazy<ClrModule>(GetMscorlib);
         }
 
-
         /// <summary>
         /// Flushes the dac cache.  This function MUST be called any time you expect to call the same function
         /// but expect different results.  For example, after walking the heap, you need to call Flush before
