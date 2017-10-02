@@ -85,7 +85,7 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
             }
         }
 
-        internal override ulong Address
+        public override ulong Address
         {
             get
             {
