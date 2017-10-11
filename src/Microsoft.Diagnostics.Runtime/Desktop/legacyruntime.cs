@@ -590,10 +590,10 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
                     return result;
             }
 
-            if (_stackTrace == 0)
+            var heap = (DesktopGCHeap)Heap;
+            if (_stackTrace == 0 || heap == null)
                 return result;
 
-            var heap = (DesktopGCHeap)Heap;
             ClrType stackTraceType = heap.GetObjectType(_stackTrace);
 
             if (stackTraceType == null)

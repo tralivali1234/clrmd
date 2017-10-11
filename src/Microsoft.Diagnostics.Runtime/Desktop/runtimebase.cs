@@ -161,7 +161,11 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
             if (ccw == null)
                 return null;
 
-            return new DesktopCCWData((DesktopGCHeap)_heap.Value, addr, ccw);
+            var heap = _heap.Value;
+            if (heap != null)
+                return new DesktopCCWData(_heap.Value, addr, ccw);
+
+            return null;
         }
 
         internal ICorDebugThread GetCorDebugThread(uint osid)
@@ -263,10 +267,17 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
 
         private DesktopGCHeap CreateHeap()
         {
-            if (HasArrayComponentMethodTables)
-                return new LegacyGCHeap(this);
-            else
-                return  new V46GCHeap(this);
+            try
+            {
+                if (HasArrayComponentMethodTables)
+                    return new LegacyGCHeap(this);
+                else
+                    return new V46GCHeap(this);
+            }
+            catch (ClrDiagnosticsException)
+            {
+                return null;
+            }
         }
 
         public override ClrThreadPool ThreadPool => _threadpool.Value;

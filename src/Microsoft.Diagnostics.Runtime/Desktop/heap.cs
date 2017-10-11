@@ -30,6 +30,8 @@ namespace Microsoft.Diagnostics.Runtime.Desktop
             if (DesktopRuntime.FreeMethodTable != 0)
             {
                 var free = GetTypeByMethodTable(DesktopRuntime.FreeMethodTable, 0, 0);
+                if (free == null)
+                    throw new ClrDiagnosticsException("Invalid heap state.");
 
                 ((DesktopHeapType)free).Shared = true;
                 ((BaseDesktopHeapType)free).DesktopModule = ObjectType.Module as DesktopModule;
