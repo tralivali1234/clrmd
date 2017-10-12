@@ -429,13 +429,27 @@ namespace Microsoft.Diagnostics.Runtime.Private
         public uint HasRegisterInformation;
         public int Register;
         public int Offset;
-        public ulong Address;
-        public ulong Object;
+        public ulong _address;
+        public ulong _object;
         public uint Flags;
 
         public uint SourceType;
         public ulong Source;
-        public ulong StackPointer;
+        public ulong _stackPointer;
+
+        public ulong Address => FixSignExtension(_address);
+        public ulong Object => FixSignExtension(_object);
+        public ulong StackPointer => FixSignExtension(_stackPointer);
+
+        private ulong FixSignExtension(ulong ptr)
+        {
+            const ulong high = 0xffffffff00000000;
+
+            if (IntPtr.Size == 4 && (ptr & high) == high)
+                return ptr & ~high;
+
+            return ptr;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
