@@ -3,62 +3,98 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
-using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 
 namespace Microsoft.Diagnostics.Runtime.Linux
 {
-    internal class ELFVirtualAddressSpace : IAddressSpace
+    internal sealed class ElfVirtualAddressSpace : IAddressSpace
     {
         private readonly ElfProgramHeader[] _segments;
         private readonly IAddressSpace _addressSpace;
 
         public string Name => _addressSpace.Name;
 
-        public ELFVirtualAddressSpace(IReadOnlyList<ElfProgramHeader> segments, IAddressSpace addressSpace)
+        public ElfVirtualAddressSpace(ImmutableArray<ElfProgramHeader> segments, IAddressSpace addressSpace)
         {
-            Length = segments.Max(s => s.VirtualAddress + s.VirtualSize);
             // FileSize == 0 means the segment isn't backed by any data
-            _segments = segments.Where((programHeader) => programHeader.FileSize > 0).ToArray();
+            _segments = segments.Where(segment => segment.FileSize > 0).OrderBy(segment => segment.VirtualAddress).ThenBy(segment => segment.VirtualSize).ToArray();
+            ElfProgramHeader lastSegment = _segments[_segments.Length - 1];
+            Length = lastSegment.VirtualAddress + lastSegment.FileSize;
             _addressSpace = addressSpace;
         }
 
         public long Length { get; }
 
-        public int Read(long position, byte[] buffer, int bufferOffset, int count)
+        public int Read(long address, Span<byte> buffer)
         {
-            int bytesRead = 0;
-            while (bytesRead != count)
-            {
-                int i = 0;
-                for (; i < _segments.Length; i++)
-                {
-                    long virtualAddress = _segments[i].VirtualAddress;
-                    long virtualSize = _segments[i].VirtualSize;
+            if (address == 0 || buffer.Length == 0)
+                return 0;
 
-                    long upperAddress = virtualAddress + virtualSize;
-                    if (virtualAddress <= position && position < upperAddress)
-                    {
-                        int bytesToReadRange = (int)Math.Min(count - bytesRead, upperAddress - position);
-                        long segmentOffset = position - virtualAddress;
-                        int bytesReadRange = _segments[i].AddressSpace.Read(segmentOffset, buffer, bufferOffset, bytesToReadRange);
-                        if (bytesReadRange == 0) {
-                            goto done;
-                        }
-                        position += bytesReadRange;
-                        bufferOffset += bytesReadRange;
-                        bytesRead += bytesReadRange;
-                        break;
-                    }
-                }
-                if (i == _segments.Length) {
+            int i = GetFirstSegmentContaining(address);
+            if (i < 0)
+                return 0;
+
+            int bytesRead = 0;
+            for (; i < _segments.Length; i++)
+            {
+                ElfProgramHeader segment = _segments[i];
+                long virtualAddress = segment.VirtualAddress;
+                long virtualSize = segment.VirtualSize;
+
+                if (virtualAddress > address)
                     break;
-                }
+
+                if (address >= virtualAddress + virtualSize)
+                    continue;
+
+                long offset = address - virtualAddress;
+                int toRead = (int)Math.Min(buffer.Length - bytesRead, virtualSize - offset);
+
+                Span<byte> slice = buffer.Slice(bytesRead, toRead);
+                int read = segment.AddressSpace.Read(offset, slice);
+                if (read < toRead)
+                    break;
+
+                bytesRead += read;
+                if (bytesRead == buffer.Length)
+                    break;
+
+                address += read;
             }
-        done:
-            // Zero the rest of the buffer if read less than requested
-            Array.Clear(buffer, bufferOffset, count - bytesRead);
+
             return bytesRead;
+        }
+
+        private int GetFirstSegmentContaining(long address)
+        {
+            int lower = 0;
+            int upper = _segments.Length - 1;
+
+            while (lower <= upper)
+            {
+                int mid = (lower + upper) >> 1;
+                ElfProgramHeader segment = _segments[mid];
+                long virtualAddress = segment.VirtualAddress;
+                long virtualSize = segment.VirtualSize;
+
+                if (virtualAddress <= address && address < virtualAddress + virtualSize)
+                {
+                    while (mid > 0 && address < _segments[mid - 1].VirtualAddress + _segments[mid - 1].VirtualSize)
+                    {
+                        mid--;
+                    }
+
+                    return mid;
+                }
+
+                if (address < virtualAddress)
+                    upper = mid - 1;
+                else
+                    lower = mid + 1;
+            }
+
+            return -1;
         }
     }
 }

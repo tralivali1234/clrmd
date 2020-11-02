@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.Diagnostics.Runtime.Linux
@@ -11,7 +12,7 @@ namespace Microsoft.Diagnostics.Runtime.Linux
     {
         public ElfSignalInfo SignalInfo;
         public short CurrentSignal;
-        ushort Padding;
+        private readonly ushort Padding;
         public ulong SignalsPending;
         public ulong SignalsHeld;
 
@@ -33,6 +34,6 @@ namespace Microsoft.Diagnostics.Runtime.Linux
 
         public uint ThreadId => Pid;
 
-        public unsafe bool CopyContext(uint contextFlags, uint contextSize, void* context) => RegisterSet.CopyContext(contextFlags, contextSize, context);
+        public bool CopyContext(uint contextFlags, Span<byte> context) => RegisterSet.CopyContext(context);
     }
 }

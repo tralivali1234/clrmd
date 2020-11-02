@@ -4,237 +4,200 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Microsoft.Diagnostics.Runtime.DataReaders.Implementation;
 using Microsoft.Diagnostics.Runtime.Linux;
+using Microsoft.Diagnostics.Runtime.Utilities;
 
 namespace Microsoft.Diagnostics.Runtime
 {
-    internal class CoreDumpReader : IDataReader2
+    internal class CoredumpReader : CommonMemoryReader, IDataReader, IDisposable, IThreadReader
     {
-        private readonly string _source;
         private readonly Stream _stream;
+        private readonly bool _leaveOpen;
         private readonly ElfCoreFile _core;
-        private readonly int _pointerSize;
-        private readonly Architecture _architecture;
-        private Dictionary<uint, IElfPRStatus> _threads;
-        private IList<ModuleInfo> _modules;
-        private readonly byte[] _buffer = new byte[512];
+        private Dictionary<uint, IElfPRStatus>? _threads;
+        private List<ModuleInfo>? _modules;
 
-        public CoreDumpReader(string filename)
+        public string DisplayName { get; }
+        public OSPlatform TargetPlatform => OSPlatform.Linux;
+
+        public CoredumpReader(string path, Stream stream, bool leaveOpen)
         {
-            _source = filename;
-            _stream = File.Open(filename, FileMode.Open, FileAccess.Read, FileShare.Read);
+            DisplayName = path ?? throw new ArgumentNullException(nameof(path));
+            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            _leaveOpen = leaveOpen;
             _core = new ElfCoreFile(_stream);
 
             ElfMachine architecture = _core.ElfFile.Header.Architecture;
-            switch (architecture)
+            (PointerSize, Architecture) = architecture switch
             {
-                case ElfMachine.EM_X86_64:
-                    _pointerSize = 8;
-                    _architecture = Architecture.Amd64;
-                    break;
-
-                case ElfMachine.EM_386:
-                    _pointerSize = 4;
-                    _architecture = Architecture.X86;
-                    break;
-
-                case ElfMachine.EM_AARCH64:
-                    _pointerSize = 8;
-                    _architecture = Architecture.Arm64;
-                    break;
-
-                case ElfMachine.EM_ARM:
-                    _pointerSize = 4;
-                    _architecture = Architecture.Arm;
-                    break;
-
-                default:
-                    throw new NotImplementedException($"Support for {architecture} not yet implemented.");
-            }
+                ElfMachine.EM_X86_64  => (8, Architecture.Amd64),
+                ElfMachine.EM_386     => (4, Architecture.X86),
+                ElfMachine.EM_AARCH64 => (8, Architecture.Arm64),
+                ElfMachine.EM_ARM     => (4, Architecture.Arm),
+                _ => throw new NotImplementedException($"Support for {architecture} not yet implemented."),
+            };
         }
 
-        public bool IsMinidump => false; // TODO
+        public bool IsThreadSafe => false;
 
-        public void Close()
+        public void Dispose()
         {
+            if (!_leaveOpen)
+                _stream.Dispose();
         }
 
-        public uint ProcessId
+        public int ProcessId
         {
             get
             {
                 foreach (IElfPRStatus status in _core.EnumeratePRStatus())
-                    return status.ProcessId;
+                    return (int)status.ProcessId;
 
-                return uint.MaxValue;
+                return -1;
             }
         }
 
-        public IEnumerable<uint> EnumerateAllThreads()
+        public IEnumerable<ModuleInfo> EnumerateModules()
         {
-            InitThreads();
-            return _threads.Keys;
-        }
-
-        public IList<ModuleInfo> EnumerateModules()
-        {
-            if (_modules == null)
+            if (_modules is null)
             {
-                // Need to filter out non-modules like the interpreter (named something 
-                // like "ld-2.23") and anything that starts with /dev/ because their 
+                // Need to filter out non-modules like the interpreter (named something
+                // like "ld-2.23") and anything that starts with /dev/ because their
                 // memory range overlaps with actual modules.
                 ulong interpreter = _core.GetAuxvValue(ElfAuxvType.Base);
-                _modules = _core.LoadedImages
-                    .Where((img) => (ulong)img.BaseAddress != interpreter && !img.Path.StartsWith("/dev/"))
-                    .Select(img => CreateModuleInfo(img))
-                    .ToArray();
+
+                _modules = new List<ModuleInfo>(_core.LoadedImages.Length);
+                foreach (ElfLoadedImage image in _core.LoadedImages)
+                    if ((ulong)image.BaseAddress != interpreter && !image.Path.StartsWith("/dev"))
+                        _modules.Add(CreateModuleInfo(image));
             }
+
             return _modules;
         }
 
-        private ModuleInfo CreateModuleInfo(ElfLoadedImage img)
+        private ModuleInfo CreateModuleInfo(ElfLoadedImage image)
         {
-            ElfFile file = img.Open();
+            ElfFile? file = image.Open();
 
-            return new ModuleInfo
+            int filesize = 0;
+            int timestamp = 0;
+
+            if (file is null)
             {
-                FileName = img.Path,
-                FileSize = (uint)img.Size,
-                ImageBase = (ulong)img.BaseAddress,
-                BuildId = file?.BuildId,
-                IsManaged = file == null
-            };
+                using Stream stream = image.CreateStream();
+                PEImage.ReadIndexProperties(stream, out timestamp, out filesize);
+            }
+
+            // It's true that we are setting "IndexFileSize" to be the raw size on linux for Linux modules,
+            // but this unblocks some SOS scenarios.
+            if (filesize == 0)
+            {
+                filesize = unchecked((int)image.Size);
+            }
+
+            // This substitution is for unloaded modules for which Linux appends " (deleted)" to the module name.
+            string path = image.Path.Replace(" (deleted)", "");
+
+            // We set buildId to "default" which means we will later lazily evaluate the buildId on demand.
+            return new ModuleInfo(this, (ulong)image.BaseAddress, path, true, filesize, timestamp, buildId: default);
         }
 
-        public void Flush()
+        public void FlushCachedData()
         {
             _threads = null;
             _modules = null;
         }
 
-        public Architecture GetArchitecture()
+        public Architecture Architecture { get; }
+
+        public override int PointerSize { get; }
+
+        public IEnumerable<uint> EnumerateOSThreadIds()
         {
-            return _architecture;
+            foreach (IElfPRStatus status in _core.EnumeratePRStatus())
+                yield return status.ThreadId;
         }
 
-        public uint GetPointerSize()
-        {
-            return (uint)_pointerSize;
-        }
+        public ulong GetThreadTeb(uint osThreadId) => 0;
 
-        public unsafe bool GetThreadContext(uint threadID, uint contextFlags, uint contextSize, IntPtr context)
+        public bool GetThreadContext(uint threadID, uint contextFlags, Span<byte> context)
         {
-            InitThreads();
+            Dictionary<uint, IElfPRStatus> threads = LoadThreads();
 
-            if (_threads.TryGetValue(threadID, out IElfPRStatus status))
-            {
-                return status.CopyContext(contextFlags, contextSize, context.ToPointer());
-            }
+            if (threads.TryGetValue(threadID, out IElfPRStatus? status))
+                return status.CopyContext(contextFlags, context);
 
             return false;
         }
 
-        public unsafe bool GetThreadContext(uint threadID, uint contextFlags, uint contextSize, byte[] context)
+        public ImmutableArray<byte> GetBuildId(ulong baseAddress)
         {
-            InitThreads();
+            return GetElfFile(baseAddress)?.BuildId ?? ImmutableArray<byte>.Empty;
+        }
 
-            if (_threads.TryGetValue(threadID, out IElfPRStatus status))
+        public bool GetVersionInfo(ulong baseAddress, out VersionInfo version)
+        {
+            ElfFile? file = GetElfFile(baseAddress);
+            if (file != null)
             {
-                fixed (byte* ptr = context)
-                {
-                    return status.CopyContext(contextFlags, contextSize, ptr);
-                }
+                return this.GetVersionInfo(baseAddress, file, out version);
             }
 
-            return false;
-        }
-
-        public ulong GetThreadTeb(uint thread)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void GetVersionInfo(ulong baseAddress, out VersionInfo version)
-        {
-            // TODO
-            Debug.WriteLine($"GetVersionInfo not yet implemented: addr={baseAddress:x}");
-            version = new VersionInfo();
-        }
-
-        public uint ReadDwordUnsafe(ulong addr)
-        {
-            int read = _core.ReadMemory((long)addr, _buffer, 4);
-            if (read == 4)
-                return BitConverter.ToUInt32(_buffer, 0);
-
-            return 0;
-        }
-
-        public bool ReadMemory(ulong address, byte[] buffer, int bytesRequested, out int bytesRead)
-        {
-            bytesRead = _core.ReadMemory((long)address, buffer, bytesRequested);
-            return bytesRead > 0;
-        }
-
-        public bool ReadMemory(ulong address, IntPtr ptr, int bytesRequested, out int bytesRead)
-        {
-            byte[] buffer = _buffer;
-            if (bytesRequested > buffer.Length)
-                buffer = new byte[bytesRequested];
-
-            bool result = ReadMemory(address, buffer, bytesRequested, out bytesRead);
-            if (result)
-                Marshal.Copy(buffer, 0, ptr, bytesRead);
-
-            return result;
-        }
-
-        public ulong ReadPointerUnsafe(ulong addr)
-        {
-            int read = _core.ReadMemory((long)addr, _buffer, _pointerSize);
-            if (read == _pointerSize)
+            using PEImage? pe = GetPEImage(baseAddress);
+            if (pe != null)
             {
-                if (_pointerSize == 8)
-                    return BitConverter.ToUInt64(_buffer, 0);
-
-                if (_pointerSize == 4)
-                    return BitConverter.ToUInt32(_buffer, 0);
-            }
-
-            return 0;
-        }
-
-        public bool VirtualQuery(ulong address, out VirtualQueryData vq)
-        {
-            long addr = (long)address;
-            foreach (ElfProgramHeader item in _core.ElfFile.ProgramHeaders)
-            {
-                long start = item.VirtualAddress;
-                long end = start + item.VirtualSize;
-
-                if (start <= addr && addr < end)
+                FileVersionInfo? fileVersionInfo = pe.GetFileVersionInfo();
+                if (fileVersionInfo != null)
                 {
-                    vq = new VirtualQueryData((ulong)start, (ulong)item.VirtualSize);
+                    version = fileVersionInfo.VersionInfo;
                     return true;
                 }
             }
 
-            vq = new VirtualQueryData();
+            version = default;
             return false;
         }
 
-        private void InitThreads()
+        private ElfFile? GetElfFile(ulong baseAddress)
         {
-            if (_threads != null)
-                return;
+            return _core.LoadedImages.First(image => (ulong)image.BaseAddress == baseAddress).Open();
+        }
 
-            _threads = new Dictionary<uint, IElfPRStatus>();
-            foreach (IElfPRStatus status in _core.EnumeratePRStatus())
-                _threads.Add(status.ThreadId, status);
+        private PEImage? GetPEImage(ulong baseAddress)
+        {
+            return EnumerateModules().First(mod => mod.ImageBase == baseAddress).GetPEImage();
+        }
+
+        public override int Read(ulong address, Span<byte> buffer)
+        {
+            DebugOnly.Assert(!buffer.IsEmpty);
+            return address > long.MaxValue ? 0 : _core.ReadMemory((long)address, buffer);
+        }
+
+        internal IEnumerable<string> GetModulesFullPath()
+        {
+            return EnumerateModules().Where(module => !string.IsNullOrEmpty(module.FileName)).Select(module => module.FileName!);
+        }
+
+        private Dictionary<uint, IElfPRStatus> LoadThreads()
+        {
+            Dictionary<uint, IElfPRStatus>? threads = _threads;
+
+            if (threads is null)
+            {
+                threads = new Dictionary<uint, IElfPRStatus>();
+                foreach (IElfPRStatus status in _core.EnumeratePRStatus())
+                    threads.Add(status.ThreadId, status);
+
+                _threads = threads;
+            }
+
+            return threads;
         }
     }
 }

@@ -16,19 +16,20 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
     /// </summary>
     public unsafe class COMCallableIUnknown : COMHelper
     {
-        private readonly GCHandle _handle;
+        // NOTE do not make this field readonly, as otherwise we operate upon a copy of it
+        private GCHandle _handle;
         private int _refCount;
 
-        private readonly Dictionary<Guid, IntPtr> _interfaces = new Dictionary<Guid, IntPtr>();
-        private readonly List<Delegate> _delegates = new List<Delegate>();
+        private readonly Dictionary<Guid, IntPtr> _interfaces = new();
+        private readonly List<Delegate> _delegates = new();
 
         /// <summary>
-        /// The IUnknown pointer to this object.
+        /// Gets the IUnknown pointer to this object.
         /// </summary>
         public IntPtr IUnknownObject { get; }
 
         /// <summary>
-        /// The IUnknown VTable for this object.
+        /// Gets the IUnknown VTable for this object.
         /// </summary>
         public IUnknownVTable IUnknown => **(IUnknownVTable**)IUnknownObject;
 
@@ -93,17 +94,17 @@ namespace Microsoft.Diagnostics.Runtime.Utilities
             _delegates.AddRange(keepAlive);
         }
 
-        private int QueryInterfaceImpl(IntPtr self, ref Guid guid, out IntPtr ptr)
+        private HResult QueryInterfaceImpl(IntPtr _, in Guid guid, out IntPtr ptr)
         {
             if (_interfaces.TryGetValue(guid, out IntPtr value))
             {
                 Interlocked.Increment(ref _refCount);
                 ptr = value;
-                return S_OK;
+                return HResult.S_OK;
             }
 
             ptr = IntPtr.Zero;
-            return E_NOINTERFACE;
+            return HResult.E_NOINTERFACE;
         }
 
         private int ReleaseImpl(IntPtr self)

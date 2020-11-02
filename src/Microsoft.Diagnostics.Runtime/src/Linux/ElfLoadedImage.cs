@@ -3,12 +3,14 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
+using System.IO;
+using Microsoft.Diagnostics.Runtime.Utilities;
 
 namespace Microsoft.Diagnostics.Runtime.Linux
 {
     internal class ElfLoadedImage
     {
-        private readonly List<ElfFileTableEntryPointers64> _fileTable = new List<ElfFileTableEntryPointers64>(4);
+        private readonly List<ElfFileTableEntryPointers64> _fileTable = new(4);
         private readonly Reader _vaReader;
         private readonly bool _is64bit;
         private long _end;
@@ -24,19 +26,25 @@ namespace Microsoft.Diagnostics.Runtime.Linux
             Path = path;
         }
 
-        public ElfFile Open()
+        public ElfFile? Open()
         {
-            IElfHeader header;
+            IElfHeader? header;
 
             if (_is64bit)
                 header = _vaReader.TryRead<ElfHeader64>(BaseAddress);
-            else 
+            else
                 header = _vaReader.TryRead<ElfHeader32>(BaseAddress);
 
-            if (header == null || !header.IsValid)
+            if (header is null || !header.IsValid)
                 return null;
 
             return new ElfFile(header, _vaReader, BaseAddress, true);
+        }
+
+        public Stream CreateStream()
+        {
+            Stream stream = new ReaderStream(BaseAddress, Size, _vaReader);
+            return stream;
         }
 
         internal void AddTableEntryPointers(ElfFileTableEntryPointers64 pointers)

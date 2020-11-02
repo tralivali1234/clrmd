@@ -3,20 +3,19 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
-using System.Runtime.InteropServices;
 
 namespace Microsoft.Diagnostics.Runtime
 {
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
-    public class RegisterAttribute : Attribute
+    public sealed class RegisterAttribute : Attribute
     {
         /// <summary>
-        /// Optional name override
+        /// Gets or sets optional name override
         /// </summary>
-        public string Name { get; set; }
+        public string? Name { get; set; }
 
         /// <summary>
-        /// Register type and flags
+        /// Gets register type and flags
         /// </summary>
         public RegisterType RegisterType { get; }
 

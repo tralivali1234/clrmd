@@ -4,6 +4,7 @@
 
 using System.Runtime.InteropServices;
 
+#pragma warning disable CA1823
 namespace Microsoft.Diagnostics.Runtime
 {
     /// <summary>
@@ -12,7 +13,7 @@ namespace Microsoft.Diagnostics.Runtime
     [StructLayout(LayoutKind.Explicit, Pack = 1)]
     public struct Arm64Context
     {
-        public const uint Context = 0x00200000;
+        public const uint Context = 0x00400000;
         public const uint ContextControl = Context | 0x1;
         public const uint ContextInteger = Context | 0x2;
         public const uint ContextFloatingPoint = Context | 0x4;
@@ -187,8 +188,8 @@ namespace Microsoft.Diagnostics.Runtime
 
         #region Debug Registers
 
-        const int ARM64_MAX_BREAKPOINTS = 8;
-        const int ARM64_MAX_WATCHPOINTS = 2;
+        private const int ARM64_MAX_BREAKPOINTS = 8;
+        private const int ARM64_MAX_WATCHPOINTS = 2;
 
         [Register(RegisterType.Debug)]
         [FieldOffset(0x318)]

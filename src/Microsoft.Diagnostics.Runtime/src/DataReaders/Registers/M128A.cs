@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 namespace Microsoft.Diagnostics.Runtime
 {
     [StructLayout(LayoutKind.Sequential)]
-    public struct M128A
+    public struct M128A : IEquatable<M128A>
     {
         public ulong Low;
         public ulong High;
@@ -19,30 +19,14 @@ namespace Microsoft.Diagnostics.Runtime
             High = 0;
         }
 
-        public static bool operator ==(M128A lhs, M128A rhs)
-        {
-            return lhs.Low == rhs.Low && lhs.High == rhs.High;
-        }
+        public static bool operator ==(M128A left, M128A right) => left.Equals(right);
 
-        public static bool operator !=(M128A lhs, M128A rhs)
-        {
-            return lhs.Low != rhs.Low || lhs.High != rhs.High;
-        }
+        public static bool operator !=(M128A left, M128A right) => !(left == right);
 
-        public override bool Equals(object obj)
-        {
-            if (obj == null)
-                throw new ArgumentNullException(nameof(obj));
+        public override bool Equals(object? obj) => obj is M128A other && Equals(other);
 
-            if (obj.GetType() != typeof(M128A))
-                return false;
+        public bool Equals(M128A other) => Low == other.Low && High == other.High;
 
-            return this == (M128A)obj;
-        }
-
-        public override int GetHashCode()
-        {
-            return base.GetHashCode();
-        }
+        public override int GetHashCode() => base.GetHashCode();
     }
 }
